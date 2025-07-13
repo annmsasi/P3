@@ -1,6 +1,7 @@
 import sys
 sys.path.insert(0, '../')
 from planet_wars import issue_order
+from collections import defaultdict
 
 
 def attack_weakest_enemy_planet(state):
@@ -76,29 +77,102 @@ def spread_to_closest_neutral(state):
         return issue_order(state, strongest_planet.ID, closest_planet.ID, strongest_planet.num_ships / 2)
     '''
 
+# “The surplus of player P at planet A at time t is the number of ships that can be sent away on that turn from the defending army without:
+# making any scheduled order from planet A invalid
+# causing the planet to be lost anytime after that (observing only the fleets already in space)
+# bringing an imminent loss closer in time
 
-    
-def find_surplus():
-    # Helper
-    pass
+
+def find_surplus(state, planet, horizon=20):
+    """
+    Estimate how many ships can be safely sent from the given planet.
+
+    Args:
+        state (PlanetWars): Current game state
+        planet (Planet): The planet to compute surplus for
+        horizon (int): How many turns into the future to simulate
+
+    Returns:
+        int: Number of ships that can safely be sent this turn
+    """
+    # Net ship changes from fleets arriving at this planet per future turn
+    timeline = defaultdict(int)
+
+    for fleet in state.my_fleets() + state.enemy_fleets():
+        if fleet.destination_planet == planet.ID:
+            arrival_turn = fleet.turns_remaining
+            if fleet.owner == planet.owner:
+                timeline[arrival_turn] += fleet.num_ships  # Friendly reinforcement
+            else:
+                timeline[arrival_turn] -= fleet.num_ships  # Enemy attack
+
+    ships = planet.num_ships
+    min_future_ships = ships
+
+    # Simulate up to `horizon` turns
+    for t in range(1, horizon + 1):
+        ships += planet.growth_rate
+        ships += timeline[t]
+        ships = max(ships, 0)  # A planet can't have negative ships
+        min_future_ships = min(min_future_ships, ships)
+
+    # Surplus is how many ships can be safely removed now
+    surplus = max(0, planet.num_ships - min_future_ships)
+    return surplus
 
 def find_weakest():
     # Helper
     pass
 
-def find_closest():
-    # Helper
+def find_closest(state, strongest_planet):
     pass
-
 def attack_weakest():
     # Behavior
     pass
 
 
+def defend_planets(state):
+    my_planets = state.my_planets()
+    enemy_fleets = sorted(state.enemy_fleets(), key=lambda f: f.num_ships)
 
-def defend_planets():
-    # Behavior
-    pass
+    if not my_planets or not enemy_fleets:
+        return False
+
+    avg_strength = sum(p.num_ships for p in my_planets) / len(my_planets)
+
+    strong_planets = [p for p in my_planets if p.num_ships > avg_strength]
+    if not strong_planets:
+        return False
+
+    action_taken = False
+
+    for fleet in enemy_fleets:
+        # Is it targeting our planet?
+        target_planet = next((p for p in my_planets if p.ID == fleet.destination_planet), None)
+        if not target_planet:
+            continue
+
+        # Estimate how many ships are needed to defend
+        turns = fleet.turns_remaining
+        expected_growth = target_planet.growth_rate * turns
+        predicted_defense = target_planet.num_ships + expected_growth
+        ships_needed = fleet.num_ships - predicted_defense + 1
+
+        if ships_needed <= 0:
+            continue  # Planet can defend itself
+
+        # Find strongest planet that can afford to help
+        for sp in sorted(strong_planets, key=lambda p: p.num_ships, reverse=True):
+            surplus = find_surplus(state, sp)
+            if surplus >= ships_needed:
+                issue_order(state, sp.ID, target_planet.ID, ships_needed)
+                action_taken = True
+                break
+            elif surplus > 0:
+                issue_order(state, sp.ID, target_planet.ID, surplus)
+                action_taken = True
+
+    return action_taken
 
 def sort_strength(planets):
     pass
