@@ -26,17 +26,32 @@ def setup_behavior_tree():
     # Top-down construction of behavior tree
     root = Selector(name='High Level Ordering of Strategies')
 
+    # Early game behavior is to spread to neutral planets that result in the largest growth
+    early_game = Sequence(name='Early Game Strategy')
+    # The growth check checks to see if we are behind or even in growth compared to the opponent
+    growth_check = Check(check_growth)
+    many_neutral_planets_check = Check(if_neutral_planet_available)
+    rapid_spread = Action(reckless_spread)
+    early_game.child_nodes = [growth_check, many_neutral_planets_check, rapid_spread]
+
+    defensive_plan = Sequence(name='Defensive Strategy')
+    incoming_fleet_check = Check(check_incoming_fleets) 
+    defend = Action(defend_planets)
+    defensive_plan.child_nodes = [incoming_fleet_check, defend]
+
+    creep_up = Action(creep)
+
     offensive_plan = Sequence(name='Offensive Strategy')
     largest_fleet_check = Check(have_largest_fleet)
     attack = Action(attack_weakest_enemy_planet)
     offensive_plan.child_nodes = [largest_fleet_check, attack]
 
     spread_sequence = Sequence(name='Spread Strategy')
-    neutral_planet_check = Check(if_neutral_planet_available)
+    neutral_planet_check = Check(if_many_neutral_planets_available)
     spread_action = Action(spread_to_closest_neutral)
     spread_sequence.child_nodes = [neutral_planet_check, spread_action]
 
-    root.child_nodes = [offensive_plan, spread_sequence, attack.copy()]
+    root.child_nodes = [early_game, offensive_plan]
 
     logging.info('\n' + root.tree_to_string())
     return root
