@@ -22,37 +22,36 @@ from planet_wars import PlanetWars, finish_turn
 # You have to improve this tree or create an entire new one that is capable
 # of winning against all the 5 opponent bots
 def setup_behavior_tree():
-
-    # Top-down construction of behavior tree
     root = Selector(name='High Level Ordering of Strategies')
 
-    # Early game behavior is to spread to neutral planets that result in the largest growth
-    early_game = Sequence(name='Early Game Strategy')
-    # The growth check checks to see if we are behind or even in growth compared to the opponent
-    growth_check = Check(check_growth)
-    many_neutral_planets_check = Check(if_neutral_planet_available)
-    rapid_spread = Action(reckless_spread)
-    early_game.child_nodes = [growth_check, many_neutral_planets_check, rapid_spread]
+    #(main strategy)
+    # aggresive bot is too annoying
+    anti_aggro = Action(anti_aggressive)
 
-    defensive_plan = Sequence(name='Defensive Strategy')
-    incoming_fleet_check = Check(check_incoming_fleets) 
-    defend = Action(defend_planets)
-    defensive_plan.child_nodes = [incoming_fleet_check, defend]
+    # first 30 turns
+    blitz = Sequence(name='Early Game Blitz')
+    blitz_check = Check(is_early_game)
+    blitz_action = Action(early_game_aggressive)
+    blitz.child_nodes = [blitz_check, blitz_action]
 
-    creep_up = Action(creep)
+    # desperate
+    all_in = Sequence(name='All In Attack')
+    all_in_check = Check(should_go_all_in)
+    all_in_action = Action(all_in_attack)
+    all_in.child_nodes = [all_in_check, all_in_action]
+    # Conservative defense
+    conservative = Sequence(name='Conservative Defense')
+    conservative_check = Check(should_conservative_defense)
+    conservative_action = Action(conservative_defense)
+    conservative.child_nodes = [conservative_check, conservative_action]
+    #  Winning consolidation if ahead
+    winning = Sequence(name='Winning Consolidation')
+    winning_check = Check(is_winning_comfortably)
+    winning_action = Action(winning_consolidation)
+    winning.child_nodes = [winning_check, winning_action]
 
-    offensive_plan = Sequence(name='Offensive Strategy')
-    largest_fleet_check = Check(have_largest_fleet)
-    attack = Action(attack_weakest_enemy_planet)
-    offensive_plan.child_nodes = [largest_fleet_check, attack]
-
-    spread_sequence = Sequence(name='Spread Strategy')
-    neutral_planet_check = Check(if_many_neutral_planets_available)
-    spread_action = Action(spread_to_closest_neutral)
-    spread_sequence.child_nodes = [neutral_planet_check, spread_action]
-
-    root.child_nodes = [early_game, offensive_plan]
-
+    counter_aggro = Action(counter_aggression)
+    root.child_nodes = [anti_aggro, blitz, all_in, conservative, winning, counter_aggro]
     logging.info('\n' + root.tree_to_string())
     return root
 

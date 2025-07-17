@@ -4,247 +4,258 @@ from planet_wars import issue_order
 from collections import defaultdict
 
 
-def attack_weakest_enemy_planet(state):
-    # (1) If we currently have a fleet in flight, abort plan.
-    if len(state.my_fleets()) >= 1:
-        return False
-
-    # (2) Find my strongest planet.
-    strongest_planet = max(state.my_planets(), key=lambda t: t.num_ships, default=None)
-
-    # (3) Find the weakest enemy planet.
-    weakest_planet = min(state.enemy_planets(), key=lambda t: t.num_ships, default=None)
-
-    if not strongest_planet or not weakest_planet:
-        # No legal source or destination
-        return False
-    else:
-        # (4) Send half the ships from my strongest planet to the weakest enemy planet.
-        return issue_order(state, strongest_planet.ID, weakest_planet.ID, strongest_planet.num_ships / 2)
-
-def spread_to_weakest_neutral_planet(state):
-    # (1) If we currently have a fleet in flight, just do nothing.
-    if len(state.my_fleets()) >= 1:
-        return False
-
-    # (2) Find my strongest planet.
-    strongest_planet = max(state.my_planets(), key=lambda p: p.num_ships, default=None)
-
-    # (3) Find the weakest neutral planet.
-    weakest_planet = min(state.neutral_planets(), key=lambda p: p.num_ships, default=None)
-
-    if not strongest_planet or not weakest_planet:
-        # No legal source or destination
-        return False
-    else:
-        # (4) Send half the ships from my strongest planet to the weakest enemy planet.
-        return issue_order(state, strongest_planet.ID, weakest_planet.ID, strongest_planet.num_ships / 2)
-
-def spread_to_closest_neutral(state):
-    action_taken = False
-
-    # For each planet, check if it has a surplus of ships
-    for planet in state.my_planets():
-        # surplus = find_surplus(state, planet)
-        # if surplus <= 0:
-        #     continue
-
-        # Find the closest neutral planet
-        closest_neutral = min(state.neutral_planets(), key=lambda p: state.distance(planet.ID, p.ID), default=None)
-
-        # If we found a neutral planet, issue an order to spread if no fleet is already in flight to that neutral planet
-        if closest_neutral and (planet.num_ships > closest_neutral.num_ships + 1) and not any(fleet.destination_planet == closest_neutral.ID for fleet in state.my_fleets()):
-            issue_order(state, planet.ID, closest_neutral.ID, closest_neutral.num_ships + 1)
-            action_taken = True
-        
-    return action_taken
-    
-
-# “The surplus of player P at planet A at time t is the number of ships that can be sent away on that turn from the defending army without:
-# making any scheduled order from planet A invalid
-# causing the planet to be lost anytime after that (observing only the fleets already in space)
-# bringing an imminent loss closer in time
-
-
-def find_surplus(state, planet, horizon= 20):
-    """
-    Estimate how many ships can be safely sent from the given planet.
-
-    Args:
-        state (PlanetWars): Current game state
-        planet (Planet): The planet to compute surplus for
-        horizon (int): How many turns into the future to simulate
-
-    Returns:
-        int: Number of ships that can safely be sent this turn
-    """
-    # Net ship changes from fleets arriving at this planet per future turn
-    timeline = defaultdict(int)
-
-    for fleet in state.my_fleets() + state.enemy_fleets():
-        if fleet.destination_planet == planet.ID:
-            arrival_turn = fleet.turns_remaining
-            if fleet.owner == planet.owner:
-                timeline[arrival_turn] += fleet.num_ships  # Friendly reinforcement
-            else:
-                timeline[arrival_turn] -= fleet.num_ships  # Enemy attack
-
-    ships = planet.num_ships
-    min_future_ships = ships
-
-    # Simulate up to `horizon` turns
-    for t in range(1, horizon + 1):
-        ships += planet.growth_rate
-        ships += timeline[t]
-        ships = max(ships, 0)  # A planet can't have negative ships
-        min_future_ships = min(min_future_ships, ships)
-
-    # Surplus is how many ships can be safely removed now
-    surplus = max(0, planet.num_ships - min_future_ships)
-    return surplus
-
-def find_weakest():
-    # Helper
-    pass
-
-# Takes the strongest planet and finds the closest planet to it
-def find_closest(state, strongest_planet):
-    return min(state.planets(), key=lambda p: state.distance(strongest_planet.ID, p.ID), default=None)
-    
-def attack_weakest():
-    # Behavior
-    pass
-
-
-def defend_planets(state):
-    my_planets = state.my_planets()
-    enemy_fleets = sorted(state.enemy_fleets(), key=lambda f: f.num_ships)
-
-    if not my_planets or not enemy_fleets:
-        return False
-
-    avg_strength = sum(p.num_ships for p in my_planets) / len(my_planets)
-
-    strong_planets = [p for p in my_planets if p.num_ships > avg_strength]
-    if not strong_planets:
-        return False
-
-    action_taken = False
-
-    for fleet in enemy_fleets:
-        # Is it targeting our planet?
-        target_planet = next((p for p in my_planets if p.ID == fleet.destination_planet), None)
-        if not target_planet:
-            continue
-
-        # Estimate how many ships are needed to defend
-        turns = fleet.turns_remaining
-        expected_growth = target_planet.growth_rate * turns
-        predicted_defense = target_planet.num_ships + expected_growth
-        ships_needed = fleet.num_ships - predicted_defense + 1
-
-        if ships_needed <= 0:
-            continue  # Planet can defend itself
-
-        # Find strongest planet that can afford to help
-        for sp in sorted(strong_planets, key=lambda p: p.num_ships, reverse=True):
-            surplus = find_surplus(state, sp)
-            if surplus >= ships_needed:
-                issue_order(state, sp.ID, target_planet.ID, ships_needed)
-                action_taken = True
-                break
-            elif surplus > 0:
-                issue_order(state, sp.ID, target_planet.ID, surplus)
-                action_taken = True
-
-    return action_taken
-
-def sort_strength(planets):
-    pass
-
-def spread_to_furthest_neutral(state):
-    # Spread to the neutral planet furthest from the strongest enemy planet
-    # (1) If we currently have a fleet in flight, just do nothing.
-    if len(state.my_fleets()) >= 1:
-        return False
-
-    # (2) Find the enemy strongest planet.
-    strongest_planet = max(state.enemy_planets(), key=lambda p: p.num_ships, default=None)
-
-    # (3) Find the furthest neutral planet.
-    furthest_planet = max(state.neutral_planets(), key=lambda p: state.distance(strongest_planet.ID, p.ID), default=None)
-
-    if not strongest_planet or not furthest_planet:
-        # No legal source or destination
-        return False
-    else:
-        # (4) Send half the ships from my strongest planet to the weakest enemy planet.
-        # We want to change this so that it only issues an order to spread if our surplus on that planet >= power of the neutral planet
-        return issue_order(state, strongest_planet.ID, furthest_planet.ID, strongest_planet.num_ships / 2)
-
-def creep(state):
-    # Re-Allocate ships to the planet closest to the enemy
+def counter_aggression(state):
+    # Specialized behavior to counter aggressive strate
     action_taken = False
     my_planets = state.my_planets()
-    if not my_planets:
-        return action_taken
-    # Find the closest enemy planet
-    closest_enemy_planet = min(state.enemy_planets(), key=lambda p: state.distance(my_planets[0].ID, p.ID), default=None)
-    if not closest_enemy_planet:
-        return action_taken
-    # Find the closest of my planets to the enemy planet
-    closest_my_planet = min(my_planets, key=lambda p: state.distance(p.ID, closest_enemy_planet.ID), default=None)
-    if not closest_my_planet:
-        return action_taken
-    # If the closest planet to the enemy has more ships than the enemy planet, do nothing and hold the position
-    if closest_my_planet.num_ships > closest_enemy_planet.num_ships:
-        return action_taken
-    else:
-        # Otherwise, we want to bolster the closest planet to the enemy with ships from our other planets if a fleet is not already in flight to that planet
-        for planet in my_planets:
-            if planet.ID != closest_my_planet.ID and planet.num_ships > 1 and not any(fleet.destination_planet == closest_my_planet.ID for fleet in state.my_fleets()):
-                issue_order(state, planet.ID, closest_my_planet.ID, planet.num_ships - 1)
-                action_taken = True
-
-    return action_taken
-
-def reckless_spread(state):
-    # Spread to the neutral planets with the largest combined growth rate
-    action_taken = False
+    enemy_fleets = state.enemy_fleets()
+    enemy_planets = state.enemy_planets()
     neutral_planets = state.neutral_planets()
 
-    # If there are no neutral planets, do nothing
-    if not neutral_planets:
+    #Defend against incoming
+    for fleet in enemy_fleets:
+        target_planet = next((p for p in my_planets if p.ID == fleet.destination_planet), None)
+        if target_planet:
+            turns_until_arrival = fleet.turns_remaining
+            expected_defense = target_planet.num_ships + (target_planet.growth_rate * turns_until_arrival)
+            ships_needed = max(0, fleet.num_ships - expected_defense + 1)
+            if ships_needed > 0:
+                ships_to_send = ships_needed
+                for sp in sorted(my_planets, key=lambda p: state.distance(p.ID, target_planet.ID)):
+                    if sp.ID == target_planet.ID:
+                        continue
+                    surplus = sp.num_ships - 1
+                    if surplus > 0 and ships_to_send > 0:
+                        send = min(surplus, ships_to_send)
+                        issue_order(state, sp.ID, target_planet.ID, send)
+                        ships_to_send -= send
+                        action_taken = True
+                    if ships_to_send <= 0:
+                        break
+                if action_taken:
+                    return action_taken
+
+    #attack all weak enemy planets
+    if not action_taken and len(state.my_fleets()) < 2 and enemy_planets:
+        for enemy_planet in sorted(enemy_planets, key=lambda p: p.growth_rate, reverse=True):
+            # Prioritize high-growth enemy planets
+            if any(fleet.destination_planet == enemy_planet.ID for fleet in state.my_fleets()):
+                continue
+            required_ships = enemy_planet.num_ships + 1
+            # Try to send from multiple of our planets if needed
+            ships_to_send = required_ships
+            for my_planet in sorted(my_planets, key=lambda p: state.distance(p.ID, enemy_planet.ID)):
+                surplus = my_planet.num_ships - 1
+                if surplus > 0 and ships_to_send > 0:
+                    send = min(surplus, ships_to_send)
+                    issue_order(state, my_planet.ID, enemy_planet.ID, send)
+                    ships_to_send -= send
+                    action_taken = True
+                if ships_to_send <= 0:
+                    break
+        if action_taken:
+            return action_taken
+
+    # neutral planets about to be captured by the enemy
+    if not action_taken and neutral_planets:
+        for neutral in neutral_planets:
+            incoming_enemy_fleets = [f for f in state.enemy_fleets() if f.destination_planet == neutral.ID]
+            if not incoming_enemy_fleets:
+                continue
+            soonest_enemy_fleet = min(incoming_enemy_fleets, key=lambda f: f.turns_remaining)
+            for my_planet in my_planets:
+                my_distance = state.distance(my_planet.ID, neutral.ID)
+                if my_distance == soonest_enemy_fleet.turns_remaining + 1 and my_planet.num_ships > neutral.num_ships + 1:
+                    issue_order(state, my_planet.ID, neutral.ID, neutral.num_ships + 1)
+                    action_taken = True
+                    break
+            if action_taken:
+                break
+        if action_taken:
+            return action_taken
+
+    # Aggressively capture neutral planets
+    if not action_taken and neutral_planets:
+        for neutral in sorted(neutral_planets, key=lambda p: p.growth_rate, reverse=True):
+            required_ships = neutral.num_ships + 1
+            ships_to_send = required_ships
+            for my_planet in sorted(my_planets, key=lambda p: state.distance(p.ID, neutral.ID)):
+                surplus = my_planet.num_ships - 1
+                if surplus > 0 and ships_to_send > 0:
+                    send = min(surplus, ships_to_send)
+                    issue_order(state, my_planet.ID, neutral.ID, send)
+                    ships_to_send -= send
+                    action_taken = True
+                if ships_to_send <= 0:
+                    break
+        if action_taken:
+            return action_taken
+
+def all_in_attack(state):
+    # Desperate when we're losing badly
+    action_taken = False
+    my_planets = state.my_planets()
+    enemy_planets = state.enemy_planets()
+    
+    if not my_planets or not enemy_planets:
         return action_taken
     
-    # Sort neutral planets by growth rate return in descending order
-    sorted_neutral_planets = sorted(neutral_planets, key=lambda p: (p.growth_rate / (p.num_ships + 1)), reverse=True)
+    # Find the weakest enemy planet
+    target = min(enemy_planets, key=lambda p: p.num_ships)
+    
+    # Send ALL ships from ALL our planets
+    for my_planet in my_planets:
+        if my_planet.num_ships > 1:
+            issue_order(state, my_planet.ID, target.ID, my_planet.num_ships - 1)
+            action_taken = True
+    
+    return action_taken
 
-    # For each planet in the sorted list, try to spread from the closest of my planets
-    for neutral_planet in sorted_neutral_planets:
-        # Check if we have a fleet already in flight to this neutral planet
-        if any(fleet.destination_planet == neutral_planet.ID for fleet in state.my_fleets()):
-            continue
+def conservative_defense(state):
+    # only defend, never attack
+    action_taken = False
+    my_planets = state.my_planets()
+    enemy_fleets = state.enemy_fleets()
+    
+    if not my_planets or not enemy_fleets:
+        return action_taken
+    
+    # Reinforce any planet w/ ALL available ships
+    for fleet in enemy_fleets:
+        target_planet = next((p for p in my_planets if p.ID == fleet.destination_planet), None)
+        if target_planet:
+            # Send reinforcements from all other planets
+            for sp in my_planets:
+                if sp.ID != target_planet.ID and sp.num_ships > 1:
+                    issue_order(state, sp.ID, target_planet.ID, sp.num_ships - 1)
+                    action_taken = True
+    
+    return action_taken
 
-        # Array to hold the potential source planets and allocatable ships
-        source_planets = []
-        # Variable to tally the total surplus ships of nearby ally planets
-        total_ships = 0
+def winning_consolidation(state):
+    # When winning finish the enemy
+    action_taken = False
+    my_planets = state.my_planets()
+    enemy_planets = state.enemy_planets()
+    
+    if not my_planets or not enemy_planets:
+        return action_taken
+    
+    target = max(enemy_planets, key=lambda p: p.num_ships)
+    required_ships = target.num_ships +1 
+    # Send ships from multiple planets to win
+    ships_to_send = required_ships
+    for my_planet in sorted(my_planets, key=lambda p: state.distance(p.ID, target.ID)):
+        surplus = my_planet.num_ships - 1
+        if surplus > 0 and ships_to_send > 0:
+            send = min(surplus, ships_to_send)
+            issue_order(state, my_planet.ID, target.ID, send)
+            ships_to_send -= send
+            action_taken = True
+        if ships_to_send <= 0:
+            break
+    
+    return action_taken
 
-        # Sort my planets by distance to the neutral planet
-        my_planets = sorted(state.my_planets(), key=lambda p: state.distance(p.ID, neutral_planet.ID))
-        for my_planet in my_planets:
-            if my_planet.num_ships > 1:  # Only consider planets with more than 1 ship
-                total_ships += min(my_planet.num_ships - 1, neutral_planet.num_ships + 1)
-                source_planets.append(my_planet)
-            # If we have enough ships to spread to the neutral planet, issue the order
-            if total_ships >= neutral_planet.num_ships + 1:
-                # Issue the order from each planet that has enough ships
-                for source_planet in source_planets:
-                    total_ships -= min(source_planet.num_ships - 1, neutral_planet.num_ships + 1)
-                    issue_order(state, source_planet.ID, neutral_planet.ID, min(source_planet.num_ships - 1, neutral_planet.num_ships + 1))
+def early_game_aggressive(state):
+    # For the first 30 turns, send ships to all neutral and weak
+    action_taken = False
+    my_planets = state.my_planets()
+    neutral_planets = state.neutral_planets()
+    enemy_planets = state.enemy_planets()
+    turn = getattr(state, 'turn', 1)
+    if not hasattr(state, 'turn'):
+        turn = max([getattr(f, 'turns_remaining', 0) for f in state.my_fleets() + state.enemy_fleets()] + [1])
+    if turn > 30:
+        return False
+    # Track available ships for each planet locally
+    available_ships = {p.ID: p.num_ships for p in my_planets}
+    for neutral in sorted(neutral_planets, key=lambda p: (-p.growth_rate, p.num_ships)):
+        for my_planet in sorted(my_planets, key=lambda p: state.distance(p.ID, neutral.ID)):
+            if available_ships[my_planet.ID] > neutral.num_ships + 1:
+                if not any(fleet.destination_planet == neutral.ID for fleet in state.my_fleets()):
+                    issue_order(state, my_planet.ID, neutral.ID, neutral.num_ships + 1)
+                    available_ships[my_planet.ID] -= (neutral.num_ships + 1)
+                    action_taken = True
+                    break
+    for enemy in sorted(enemy_planets, key=lambda p: p.num_ships):
+        for my_planet in sorted(my_planets, key=lambda p: state.distance(p.ID, enemy.ID)):
+            required = int(enemy.num_ships * 1.1) + 1
+            if available_ships[my_planet.ID] > required:
+                issue_order(state, my_planet.ID, enemy.ID, required)
+                available_ships[my_planet.ID] -= required
                 action_taken = True
                 break
-        
+    return action_taken
 
+def anti_aggressive(state):
+    action_taken = False
+    my_planets = state.my_planets()
+    enemy_planets = state.enemy_planets()
+    neutral_planets = state.neutral_planets()
+    enemy_fleets = state.enemy_fleets()
+    # identify vulnerable planets
+    enemy_launched_fleets = [f for f in enemy_fleets if f.owner == 2]
+    total_enemy_launched = sum(f.num_ships for f in enemy_launched_fleets)
+    # Counter-attack
+    if enemy_planets and total_enemy_launched > 0:
+        for enemy_planet in sorted(enemy_planets, key=lambda p: p.growth_rate, reverse=True):
+            outgoing_from_this = sum(f.num_ships for f in enemy_launched_fleets 
+                                   if hasattr(f, 'source_planet') and f.source_planet == enemy_planet.ID)
+            
+            if outgoing_from_this > 0 or enemy_planet.num_ships < 5:  # Planet is vulnerable
+                for my_planet in sorted(my_planets, key=lambda p: state.distance(p.ID, enemy_planet.ID)):
+                    distance = state.distance(my_planet.ID, enemy_planet.ID)
+                    required = enemy_planet.num_ships + (distance * enemy_planet.growth_rate) + 1
+                    
+                    if my_planet.num_ships > required + 2: # Keep 2 ships for defense
+                        issue_order(state, my_planet.ID, enemy_planet.ID, required)
+                        action_taken = True
+                        break
+                if action_taken:
+                    break
+    # Capture close neutral planets 
+    if not action_taken and neutral_planets:
+        for neutral in sorted(neutral_planets, key=lambda p: p.growth_rate, reverse=True):
+            if not my_planets or not enemy_planets:
+                continue
+            my_closest = min(my_planets, key=lambda p: state.distance(p.ID, neutral.ID))
+            enemy_closest = min(enemy_planets, key=lambda p: state.distance(p.ID, neutral.ID))
+            
+            my_distance = state.distance(my_closest.ID, neutral.ID)
+            enemy_distance = state.distance(enemy_closest.ID, neutral.ID)
+            
+            if my_distance < enemy_distance or my_closest.num_ships > neutral.num_ships * 2:
+                if not any(f.destination_planet == neutral.ID for f in state.my_fleets()):
+                    if my_closest.num_ships > neutral.num_ships + 2:
+                        issue_order(state, my_closest.ID, neutral.ID, neutral.num_ships + 1)
+                        action_taken = True
+                        break
+    
+    if not action_taken:
+        for fleet in enemy_fleets:
+            target_planet = next((p for p in my_planets if p.ID == fleet.destination_planet), None)
+            if target_planet:
+                turns_until_arrival = fleet.turns_remaining
+                expected_defense = target_planet.num_ships + (target_planet.growth_rate * turns_until_arrival)
+                ships_needed = max(0, fleet.num_ships - expected_defense + 1)
+                if ships_needed > 0:
+                    for sp in sorted(my_planets, key=lambda p: state.distance(p.ID, target_planet.ID)):
+                        if sp.ID != target_planet.ID and sp.num_ships > ships_needed + 1:
+                            issue_order(state, sp.ID, target_planet.ID, ships_needed)
+                            action_taken = True
+                            break
+                    if action_taken:
+                        break
+    #  Attack weakest enemy planet if no other action taken
+    if not action_taken and enemy_planets:
+        weakest_enemy = min(enemy_planets, key=lambda p: p.num_ships)
+        for my_planet in sorted(my_planets, key=lambda p: state.distance(p.ID, weakest_enemy.ID)):
+            distance = state.distance(my_planet.ID, weakest_enemy.ID)
+            required = weakest_enemy.num_ships + (distance * weakest_enemy.growth_rate) + 1
+            
+            if my_planet.num_ships > required + 1:
+                issue_order(state, my_planet.ID, weakest_enemy.ID, required)
+                action_taken = True
+                break
     return action_taken

@@ -1,50 +1,51 @@
 
+def is_early_game(state):
+    total_planets = len(state.planets)
+    neutral_planets = len(state.neutral_planets())
+    return neutral_planets > total_planets * 0.3
 
-def if_neutral_planet_available(state):
-    return any(state.neutral_planets())
-
-
-def have_largest_fleet(state):
-    return sum(planet.num_ships for planet in state.my_planets()) \
-             + sum(fleet.num_ships for fleet in state.my_fleets()) \
-           > sum(planet.num_ships for planet in state.enemy_planets()) \
-             + sum(fleet.num_ships for fleet in state.enemy_fleets())
-
-def check_incoming_fleets(state):
-    my_planet_ids = {planet.ID for planet in state.my_planets()}
+def is_losing_badly(state):
+    my_total_ships = sum(p.num_ships for p in state.my_planets()) + sum(f.num_ships for f in state.my_fleets())
+    enemy_total_ships = sum(p.num_ships for p in state.enemy_planets()) + sum(f.num_ships for f in state.enemy_fleets())
+    my_growth = sum(p.growth_rate for p in state.my_planets())
+    enemy_growth = sum(p.growth_rate for p in state.enemy_planets())
     
-    for fleet in state.enemy_fleets():
-        if fleet.destination_planet in my_planet_ids:
-            return True  # We have at least one incoming threat
+    # We're losing badly if enemy has 2x our ships or 10.5 growth
+    return enemy_total_ships > my_total_ships *2 or enemy_growth > my_growth * 1.5
 
+def is_winning_comfortably(state):
+    my_total_ships = sum(p.num_ships for p in state.my_planets()) + sum(f.num_ships for f in state.my_fleets())
+    enemy_total_ships = sum(p.num_ships for p in state.enemy_planets()) + sum(f.num_ships for f in state.enemy_fleets())
+    my_growth = sum(p.growth_rate for p in state.my_planets())
+    enemy_growth = sum(p.growth_rate for p in state.enemy_planets())
+    
+    # We're winning comfortably if we have 1.5x their ships or 1.3x their growth
+    return my_total_ships > enemy_total_ships * 1.5 and my_growth > enemy_growth * 1.3
+
+def should_go_all_in(state):
+    my_planets = state.my_planets()
+    enemy_planets = state.enemy_planets()
+    
+    if not my_planets or not enemy_planets:
+        return False
+    
+    # Go all-in if we have fewer planets and are losing
+    if len(my_planets) < len(enemy_planets) and is_losing_badly(state):
+        return True
+    
+    # Go all-in if we have only 2 planets left
+    if len(my_planets) <= 2:
+        return True
+    
     return False
 
-def check_growth(state):
-    # Growth constant, adjust as needed to prioritize growth
-    growth_constant = 1.0
-
-    # Tally the growth rate of my planets and compare it to the enemy's
-    my_growth = sum(planet.growth_rate for planet in state.my_planets())
-    enemy_growth = sum(planet.growth_rate for planet in state.enemy_planets())
-
-    # Assume that the fleets in flight will affect the growth rates of both sides
-    destinations = [fleet.destination_planet for fleet in state.my_fleets()]
-    for destination in destinations:
-        # check if the destination is a neutral planet and it has a lower number of ships than all fleets targeting it
-        sum_ships = sum(fleet.num_ships for fleet in state.my_fleets() if fleet.destination_planet == destination)
-        if destination in state.neutral_planets() and destination.num_ships < sum_ships:
-            my_growth += destination.growth_rate
+def should_conservative_defense(state):
+    my_planets = state.my_planets()
+    enemy_fleets = state.enemy_fleets()
     
-    # Check the enemy's fleets in flight
-    destinations = [fleet.destination_planet for fleet in state.my_fleets()]
-    for destination in destinations:
-        # check if the destination is a neutral planet and it has a lower number of ships than all fleets targeting it
-        sum_ships = sum(fleet.num_ships for fleet in state.my_fleets() if fleet.destination_planet == destination)
-        if destination in state.neutral_planets() and destination.num_ships < sum_ships:
-            enemy_growth += destination.growth_rate
-    return my_growth <= enemy_growth * growth_constant
+    # Play conservatively if we have incoming attacks and are outnumbered
+    incoming_attacks = sum(1 for f in enemy_fleets if any(p.ID == f.destination_planet for p in my_planets))
+    return incoming_attacks > 0 and is_losing_badly(state) 
 
-def if_many_neutral_planets_available(state):
-    # Check if there are more neutral planets than my planets and enemy planets combined
-    return len(state.neutral_planets()) > len(state.my_planets()) + len(state.enemy_planets())    
+
     
